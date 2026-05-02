@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VP 榜单</title>
+<script src="https://unpkg.com/vue@3"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1d1d1f; min-height: 100vh; }
+
+.top-bar { background: #fff; border-bottom: 1px solid #e5e5ea; padding: 8px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; }
+.top-bar h1 { font-size: 17px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.top-bar .timer { font-size: 16px; font-weight: 600; color: #0071e3; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.top-bar .btn { font-size: 14px; padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn-refresh { background: #0071e3; color: #fff; }
+.btn-refresh:hover { background: #0077ed; }
+.btn-back { background: #e8e8ed; color: #1d1d1f; text-decoration: none; display: inline-flex; align-items: center; }
+.btn-back:hover { background: #d2d2d7; }
+
+.filters { display: flex; align-items: center; gap: 14px; padding: 6px 16px; background: #fff; border-bottom: 1px solid #e5e5ea; flex-wrap: wrap; position: sticky; top: 47px; z-index: 9; }
+.filter-item { display: flex; align-items: center; gap: 4px; font-size: 14px; cursor: pointer; user-select: none; }
+.filter-item input[type="checkbox"] { accent-color: #0071e3; width: 14px; height: 14px; }
+.elapsed-info { margin-left: auto; font-size: 13px; color: #86868b; }
+
+.loading-area { text-align: center; padding: 80px 0; color: #86868b; }
+.loading-area .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #d2d2d7; border-top-color: #0071e3; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.board-wrap { padding: 4px; display: flex; justify-content: center; }
+table { border-collapse: collapse; background: #fff; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.06); font-size: 15px; }
+thead th { background: #f5f5f7; font-weight: 600; text-align: center; padding: 5px 4px; border-bottom: 2px solid #e5e5ea; white-space: nowrap; position: sticky; top: 113px; z-index: 5; }
+thead th.left { text-align: left; }
+tbody tr { border-bottom: 1px solid #f0f0f0; transition: background .1s; }
+tbody tr:hover { background: #fafafa; }
+td { padding: 3px 2px; text-align: center; white-space: nowrap; }
+td.left { text-align: left; }
+td.rank { font-weight: 700; color: #86868b; width: 36px; }
+td.rank-sharp { font-weight: 700; color: #86868b; width: 36px; }
+td.rank-gold { font-weight: 700; width: 36px; background: #FAF37E; }
+td.rank-silver { font-weight: 700; width: 36px; background: #C0C0C0; }
+td.rank-bronze { font-weight: 700; width: 36px; background: #dfc0a0; }
+td.org-col { text-align: left; width: 160px; color: #555; white-space: normal; word-break: break-all; line-height: 1.2; overflow-wrap: break-word; }
+td.team { text-align: left; width: 170px; white-space: normal; word-break: break-all; line-height: 1.2; overflow-wrap: break-word; }
+td.solved { font-weight: 700; font-size: 15px; width: 44px; }
+td.penalty { color: #86868b; width: 54px; }
+
+.prob-header { line-height: 1.2; }
+.prob-alias { display: block; font-size: 14px; }
+.prob-stat { display: block; font-size: 10px; font-weight: 400; color: #86868b; }
+.prob-cell { width: 52px; cursor: pointer; }
+.prob-box { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 4px; font-size: 14px; font-weight: 600; line-height: 1.2; }
+.prob-box .tries-count { font-size: 11px; font-weight: 400; opacity: .8; }
+.prob-ac { background: #d1f2d1; color: #1a7a1a; }
+.prob-fb { background: #0a5c0a; color: #fff; }
+.prob-wa { background: #fce4e4; color: #c03; }
+.prob-frozen { background: #e8e8ed; color: #555; }
+.prob-empty { background: transparent; }
+
+.sol-popup-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 100; }
+.sol-popup { position: fixed; z-index: 101; background: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 12px 16px; min-width: 200px; max-height: 240px; overflow: auto; }
+.sol-popup h4 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #1d1d1f; }
+.sol-popup table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.sol-popup th { text-align: left; font-weight: 500; color: #86868b; padding: 2px 8px 2px 0; border-bottom: 1px solid #eee; }
+.sol-popup td { padding: 3px 8px 3px 0; border-bottom: 1px solid #f5f5f5; }
+.sol-popup .sol-ac { color: #1a7a1a; font-weight: 600; }
+.sol-popup .sol-wa { color: #c03; }
+.sol-popup .sol-frozen { color: #555; font-style: italic; }
+
+.error-msg { text-align: center; padding: 60px 20px; color: #e23648; }
+
+.footer { text-align: center; margin-top: 24px; padding: 12px 0; color: #86868b; font-size: 12px; }
+.footer a { color: #86868b; text-decoration: underline; }
+.footer a:hover { color: #555; }
+
+.team-popup-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 100; }
+.team-popup { position: fixed; z-index: 101; background: #fff; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 12px 16px; min-width: 180px; max-height: 200px; overflow: auto; }
+.team-popup .tp-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.team-popup .tp-org { font-size: 13px; color: #555; margin-bottom: 2px; }
+.team-popup .tp-tag { font-size: 11px; color: #c03; margin-bottom: 6px; }
+.team-popup .tp-members { font-size: 12px; color: #1d1d1f; line-height: 1.5; }
+.team-popup .tp-members span { color: #86868b; }
+td.team { cursor: pointer; }
+
+.timeline-bar { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e5e5ea; position: sticky; top: 80px; z-index: 9; }
+.tl-slider { flex: 1; height: 4px; -webkit-appearance: none; appearance: none; background: linear-gradient(to right, #0071e3 var(--pct, 100%), #d2d2d7 var(--pct, 100%)); border-radius: 2px; outline: none; cursor: pointer; }
+.tl-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #0071e3; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2); cursor: pointer; }
+.tl-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #0071e3; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2); cursor: pointer; }
+.tl-label { font-size: 12px; color: #86868b; font-variant-numeric: tabular-nums; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top-bar">
+    <a href="index.html" class="btn btn-back">&larr; 首页</a>
+    <h1>{{ contestTitle }}</h1>
+    <span class="timer" v-if="isVPMode && !contestEnded">{{ timerDisplay }}</span>
+    <span class="timer" v-if="contestEnded" style="color:#86868b">{{ sliderTimeLabel }}</span>
+  </div>
+
+  <div class="filters" v-if="dataLoaded">
+    <label class="filter-item">
+      <input type="checkbox" v-model="officialOnly"> 仅正式参赛
+    </label>
+    <label class="filter-item" v-if="isVPMode && !contestEnded">
+      <input type="checkbox" v-model="frozenMode"> 封榜模式
+    </label>
+    <span class="elapsed-info">
+      比赛时长: {{ contestDuration }} 分钟
+    </span>
+  </div>
+
+  <div class="timeline-bar" v-if="dataLoaded && contestEnded">
+    <span class="tl-label">0:00</span>
+    <input type="range" class="tl-slider" min="0" :max="contestDurationSec" step="1"
+           :value="reviewElapsed" @input="onSliderChange($event)"
+           :style="{ '--pct': (reviewElapsed / contestDurationSec * 100) + '%' }">
+    <span class="tl-label">{{ sliderTimeLabel }}</span>
+  </div>
+
+  <div v-if="loadError" class="error-msg">{{ loadError }}</div>
+  <div v-else-if="!dataLoaded" class="loading-area">
+    <div class="spinner"></div>
+    <p style="margin-top:12px">正在加载榜单数据…</p>
+  </div>
+
+  <div v-else class="board-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>R#</th>
+          <th>S#</th>
+          <th class="left">Organization</th>
+          <th class="left">Team</th>
+          <th>Solved</th>
+          <th>Penalty</th>
+          <th v-for="p in problemStats" :key="p.alias" class="prob-header">
+            <span class="prob-alias">{{ p.alias }}</span>
+            <span class="prob-stat">{{ p.accepted }}/{{ p.submitted }}</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="(row, idx) in filteredRows" :key="row.user.id">
+          <td :class="['rank', getMedalClass(row)]">{{ row._displayRank }}</td>
+          <td class="rank-sharp">{{ row._displayOrgRank }}</td>
+          <td class="org-col">{{ row.user.organization || '' }}</td>
+          <td class="team" @click="showTeamInfo($event, row)"><template v-if="row.user.official === false">★</template>{{ row.user.name }}</td>
+          <td class="solved">{{ row._solved }}</td>
+          <td class="penalty">{{ row._penalty }}</td>
+          <td v-for="(st, pi) in row.statuses" :key="pi" class="prob-cell" @click="showSolPopup($event, row, pi)">
+            <div :class="['prob-box', probClass(st)]">
+              <template v-if="st._isAC && !st._frozen">
+                <span>{{ formatTime(st._acTime) }}</span>
+                <span class="tries-count">{{ st._triesDisplay }}</span>
+              </template>
+              <template v-else-if="st._frozen">
+                <span>{{ formatTime(st._frozenLastTime) }}</span>
+                <span class="tries-count">?{{ st._frozenTries }}</span>
+              </template>
+              <template v-else-if="st._hasAttempt">
+                <span>{{ formatTime(st._lastTime) }}</span>
+                <span class="tries-count">-{{ st._failCount }}</span>
+              </template>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div v-if="popupRow" class="team-popup-overlay" @click="popupRow = null"></div>
+  <div v-if="popupRow" class="team-popup" :style="popupPos">
+    <div class="tp-name">{{ popupRow.user.name }}</div>
+    <div class="tp-org">{{ popupRow.user.organization }}</div>
+    <div v-if="popupRow.user.official === false" class="tp-tag">非正式参赛</div>
+    <div class="tp-members">
+      <template v-for="(m, i) in popupRow.user.teamMembers || []">
+        <template v-if="m.name.includes('教练')"><span>{{ m.name }}</span></template>
+        <template v-else>{{ m.name }}</template>
+        <template v-if="i < popupRow.user.teamMembers.length - 1"> / </template>
+      </template>
+    </div>
+  </div>
+
+  <div v-if="solPopup" class="sol-popup-overlay" @click="solPopup = null"></div>
+  <div v-if="solPopup" class="sol-popup" :style="solPopupPos">
+    <h4>Solutions of {{ solPopup.alias }} ({{ solPopup.teamName }})</h4>
+    <table>
+      <tr><th>Result</th><th>Time</th></tr>
+      <tr v-for="(s, si) in solPopup.solutions" :key="si">
+        <td :class="solResultClass(s)">{{ s.displayResult }}</td>
+        <td>{{ formatTime(s.timeSec) }}</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="footer">数据来源: <a href="https://github.com/algoux/srk-collection" target="_blank">algoux/srk-collection</a></div>
+</div>
+
+<script>
+const CDN = 'https://cdn.jsdelivr.net/gh/algoux/srk-collection@master/';
+
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+
+createApp({
+  setup() {
+    const params = new URLSearchParams(location.search);
+    const compPath = (params.get('comp') || '').replace(/\.srk\.json$/, '');
+    const startTime = parseInt(params.get('st') || '0', 10);
+    const isVPMode = ref(startTime > 0);
+
+    const loadError = ref('');
+    const dataLoaded = ref(false);
+    const officialOnly = ref(false);
+    const frozenMode = ref(isVPMode.value);
+    const contestTitle = ref('加载中…');
+    const problems = ref([]);
+    const rows = ref([]);
+    const contestDurationMin = ref(300);
+    const contestDurationSec = ref(18000);
+    const frozenDurationSec = ref(0);
+    const currentElapsed = ref(0);
+    const reviewElapsed = ref(0);
+    const reviewMode = ref(false);
+    const contestEnded = ref(false);
+    const now = ref(Date.now());
+    const awardSeriesInfo = ref(null);
+    const popupRow = ref(null);
+    const popupPos = ref({});
+    const solPopup = ref(null);
+    const solPopupPos = ref({});
+
+    let timer = null;
+
+    onMounted(async () => {
+      if (!compPath) { loadError.value = '缺少比赛参数'; return; }
+      try {
+        const resp = await fetch(CDN + compPath + '.srk.json', { cache: 'force-cache' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        contestTitle.value = data.contest?.title?.zh_CN || data.contest?.title?.fallback || compPath;
+        if (data.contest?.duration) {
+          contestDurationSec.value = timeToSeconds(data.contest.duration);
+          const [val, unit] = data.contest.duration;
+          contestDurationMin.value = unit === 'h' ? val * 60 : unit === 'min' ? val : unit === 's' ? Math.floor(val / 60) : Math.floor(contestDurationSec.value / 60);
+        }
+        if (data.contest?.frozenDuration) {
+          frozenDurationSec.value = timeToSeconds(data.contest.frozenDuration);
+        }
+        if (frozenDurationSec.value === 0) {
+          frozenDurationSec.value = contestDurationSec.value >= 3600 ? 3600 : Math.floor(contestDurationSec.value / 5);
+        }
+        problems.value = data.problems || [];
+        rows.value = data.rows || [];
+        // Extract award series info
+        const awardSeries = (data.series || []).find(s => s.segments && s.rule);
+        awardSeriesInfo.value = awardSeries ? {
+          segments: awardSeries.segments || [],
+          rule: awardSeries.rule || {}
+        } : null;
+        computeBoard();
+        dataLoaded.value = true;
+        if (isVPMode.value) {
+          timer = setInterval(() => {
+            now.value = Date.now();
+            const diff = Math.floor((now.value - startTime) / 1000);
+            if (diff >= contestDurationSec.value) {
+              contestEnded.value = true;
+              if (!reviewMode.value) {
+                reviewElapsed.value = contestDurationSec.value;
+              }
+              computeBoard();
+              clearInterval(timer);
+              timer = null;
+            } else {
+              computeBoard();
+            }
+          }, 1000);
+        } else {
+          contestEnded.value = true;
+          reviewElapsed.value = contestDurationSec.value;
+        }
+      } catch (e) {
+        loadError.value = '加载失败: ' + e.message;
+      }
+    });
+
+    onUnmounted(() => { if (timer) clearInterval(timer); });
+
+    function getElapsed() {
+      if (contestEnded.value && reviewMode.value) return reviewElapsed.value;
+      if (!isVPMode.value) return contestDurationSec.value;
+      const diff = Math.floor((now.value - startTime) / 1000);
+      return Math.min(diff, contestDurationSec.value);
+    }
+
+    function onSliderChange(e) {
+      reviewMode.value = true;
+      reviewElapsed.value = parseInt(e.target.value, 10);
+      computeBoard();
+    }
+
+    const sliderTimeLabel = computed(() => {
+      const el = reviewElapsed.value;
+      const h = Math.floor(el / 3600);
+      const m = Math.floor((el % 3600) / 60);
+      const s = el % 60;
+      if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      return m + ':' + String(s).padStart(2, '0');
+    });
+
+    function timeToSeconds(t) {
+      if (!t) return 0;
+      const [val, unit] = t;
+      if (unit === 'ms') return val / 1000;
+      if (unit === 'min') return val * 60;
+      if (unit === 'h') return val * 3600;
+      if (unit === 'd') return val * 86400;
+      return val; // 's' or unknown
+    }
+
+    function computeBoard() {
+      const elapsed = getElapsed();
+      currentElapsed.value = elapsed;
+
+      const frozenStart = contestDurationSec.value - frozenDurationSec.value;
+      const isActiveVP = isVPMode.value && !contestEnded.value;
+      const isFrozen = isActiveVP && frozenMode.value && elapsed >= frozenStart && elapsed < contestDurationSec.value;
+
+      for (const row of rows.value) {
+        let solved = 0;
+        let penalty = 0;
+
+        for (const st of row.statuses) {
+          const filtered = (st.solutions || []).filter(s => timeToSeconds(s.time) <= elapsed);
+
+          // Separate frozen solutions by result "?"
+          const preFrozen = isFrozen
+            ? filtered.filter(s => timeToSeconds(s.time) < frozenStart && s.result !== '?')
+            : filtered;
+          const frozenSols = isFrozen
+            ? filtered.filter(s => timeToSeconds(s.time) >= frozenStart || s.result === '?')
+            : [];
+
+          const acSolPre = preFrozen.find(s => s.result === 'AC' || s.result === 'FB');
+          const acSolAll = filtered.find(s => s.result === 'AC' || s.result === 'FB');
+
+          st._isAC = !!acSolAll;
+          st._acTime = acSolAll ? timeToSeconds(acSolAll.time) : 0;
+          st._hasAttempt = filtered.length > 0;
+
+          if (isFrozen && !acSolPre && frozenSols.length > 0) {
+            st._frozen = true;
+            st._isAC = false;
+            const lastFrozen = frozenSols[frozenSols.length - 1];
+            st._frozenLastTime = timeToSeconds(lastFrozen.time);
+            st._frozenTries = filtered.length;
+          } else {
+            st._frozen = false;
+          }
+
+          const acSolForRank = isFrozen ? acSolPre : acSolAll;
+
+          let failBeforeAC = 0;
+          const refList = isFrozen ? preFrozen : filtered;
+          for (const s of refList) {
+            if (s === acSolForRank) break;
+            if (s.result !== 'CE' && s.result !== 'AC' && s.result !== 'FB' && s.result !== '?') {
+              failBeforeAC++;
+            }
+          }
+          st._failBeforeAC = failBeforeAC;
+          st._isFB = acSolForRank ? acSolForRank.result === 'FB' : false;
+
+          if (acSolForRank) {
+            solved++;
+            const acSec = timeToSeconds(acSolForRank.time);
+            const acMin = Math.floor(acSec / 60);
+            penalty += acMin + failBeforeAC * 20;
+            st._triesDisplay = (failBeforeAC > 0 ? '+' + (failBeforeAC + 1) : '1');
+          } else if (st._hasAttempt && !st._frozen) {
+            st._triesDisplay = '';
+            const lastSol = filtered[filtered.length - 1];
+            st._lastTime = timeToSeconds(lastSol.time);
+          }
+
+          st._failCount = refList.filter(s => s.result !== 'AC' && s.result !== 'FB' && s.result !== 'CE' && s.result !== '?').length;
+        }
+
+        row._solved = solved;
+        row._penalty = penalty;
+      }
+
+      rows.value.sort((a, b) => {
+        if (b._solved !== a._solved) return b._solved - a._solved;
+        return a._penalty - b._penalty;
+      });
+
+      // Compute rank (tied solved+penalty share same rank, next skips)
+      for (let i = 0; i < rows.value.length; i++) {
+        if (i === 0) {
+          rows.value[i]._rank = 1;
+        } else {
+          const prev = rows.value[i - 1];
+          const cur = rows.value[i];
+          if (cur._solved === prev._solved && cur._penalty === prev._penalty) {
+            cur._rank = prev._rank;
+          } else {
+            cur._rank = i + 1;
+          }
+        }
+      }
+
+      // Compute medals based on award series rules
+      computeMedals();
+    }
+
+    const filteredRows = computed(() => {
+      const list = officialOnly.value
+        ? rows.value.filter(r => r.user?.official !== false)
+        : rows.value;
+      // Compute display R# based on filtered list (tied when same solved+penalty)
+      for (let i = 0; i < list.length; i++) {
+        if (i === 0) {
+          list[i]._displayRank = 1;
+        } else {
+          const prev = list[i - 1];
+          const cur = list[i];
+          if (cur._solved === prev._solved && cur._penalty === prev._penalty) {
+            cur._displayRank = prev._displayRank;
+          } else {
+            cur._displayRank = i + 1;
+          }
+        }
+      }
+      // Compute display S# — org ranking: rank each org by its top team only
+      // Step 1: collect each org's top team (best solved/penalty)
+      const orgBest = {};
+      for (const r of list) {
+        const org = r.user?.organization;
+        if (!org) continue;
+        if (!orgBest[org] || r._solved > orgBest[org]._solved ||
+            (r._solved === orgBest[org]._solved && r._penalty < orgBest[org]._penalty)) {
+          orgBest[org] = r;
+        }
+      }
+      // Step 2: sort orgs by their top team's result
+      const orgList = Object.entries(orgBest).sort((a, b) => {
+        if (b[1]._solved !== a[1]._solved) return b[1]._solved - a[1]._solved;
+        return a[1]._penalty - b[1]._penalty;
+      });
+      // Step 3: assign org rank with tie handling
+      const orgRankMap = {};
+      for (let i = 0; i < orgList.length; i++) {
+        const [org, best] = orgList[i];
+        if (i === 0) {
+          orgRankMap[org] = 1;
+        } else {
+          const [, prevBest] = orgList[i - 1];
+          if (best._solved === prevBest._solved && best._penalty === prevBest._penalty) {
+            orgRankMap[org] = orgRankMap[orgList[i - 1][0]];
+          } else {
+            orgRankMap[org] = i + 1;
+          }
+        }
+      }
+      // Step 4: only top team of each org shows its S#
+      const orgSeen = {};
+      for (const r of list) {
+        const org = r.user?.organization;
+        if (org && !orgSeen[org]) {
+          orgSeen[org] = true;
+          r._displayOrgRank = orgRankMap[org] || '';
+        } else {
+          r._displayOrgRank = '';
+        }
+      }
+      return list;
+    });
+
+    const timerDisplay = computed(() => {
+      const el = currentElapsed.value;
+      const h = Math.floor(el / 3600);
+      const m = Math.floor((el % 3600) / 60);
+      const s = el % 60;
+      return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    });
+
+    const contestDuration = computed(() => contestDurationMin.value);
+
+    function refresh() {
+      now.value = Date.now();
+      computeBoard();
+    }
+
+    function probClass(st) {
+      if (st._frozen) return 'prob-frozen';
+      if (!st._hasAttempt && !st._isAC) return 'prob-empty';
+      if (st._isAC) {
+        if (st._isFB) return 'prob-fb';
+        return 'prob-ac';
+      }
+      return 'prob-wa';
+    }
+
+    const problemStats = computed(() => {
+      const elapsed = currentElapsed.value;
+      const list = officialOnly.value
+        ? rows.value.filter(r => r.user?.official !== false)
+        : rows.value;
+      return problems.value.map((p, pi) => {
+        let accepted = 0, submitted = 0;
+        for (const row of list) {
+          const st = row.statuses[pi];
+          if (!st || !st.solutions) continue;
+          const filtered = st.solutions.filter(s => timeToSeconds(s.time) <= elapsed);
+          submitted += filtered.length;
+          if (filtered.some(s => s.result === 'AC' || s.result === 'FB')) accepted++;
+        }
+        return { alias: p.alias, accepted, submitted };
+      });
+    });
+
+    function formatTime(sec) {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      return h + ':' + String(m).padStart(2, '0');
+    }
+
+    function getMedalClass(row) {
+      if (!awardSeriesInfo.value) return '';
+      const segCounts = getSegmentCounts();
+      if (!segCounts.length) return '';
+
+      if (row.user?.official === true) {
+        const offRank = getOfficialRank(row);
+        let cumEnd = 0;
+        for (let i = 0; i < segCounts.length; i++) {
+          cumEnd += segCounts[i];
+          if (offRank <= cumEnd) return segmentStyleToClass(awardSeriesInfo.value.segments[i]?.style);
+        }
+        return '';
+      } else {
+        const idx = rows.value.indexOf(row);
+        for (let j = idx + 1; j < rows.value.length; j++) {
+          if (rows.value[j].user?.official === true) {
+            const offRank = getOfficialRank(rows.value[j]);
+            let cumEnd = 0;
+            for (let i = 0; i < segCounts.length; i++) {
+              cumEnd += segCounts[i];
+              if (offRank <= cumEnd) return segmentStyleToClass(awardSeriesInfo.value.segments[i]?.style);
+            }
+          }
+        }
+        return '';
+      }
+    }
+
+    function segmentStyleToClass(style) {
+      if (style === 'gold') return 'rank-gold';
+      if (style === 'silver') return 'rank-silver';
+      if (style === 'bronze') return 'rank-bronze';
+      if (style === 'iron') return 'rank-bronze';
+      if (typeof style === 'object' && style.backgroundColor) {
+        // Custom style - return empty for now, could extend later
+        return '';
+      }
+      return '';
+    }
+
+    function getSegmentCounts() {
+      const rule = awardSeriesInfo.value?.rule;
+      const segments = awardSeriesInfo.value?.segments || [];
+      if (!rule || !segments.length) return [];
+
+      const options = rule.options || {};
+      const officialRows = rows.value.filter(r => r.user?.official === true);
+      const total = officialRows.length;
+
+      let countValues = null;
+      let ratioValues = null;
+
+      // Parse count
+      if (options.count?.value) {
+        countValues = options.count.value;
+      }
+
+      // Parse ratio
+      if (options.ratio?.value) {
+        const rounding = options.ratio?.rounding || 'ceil';
+        const denominator = options.ratio?.denominator || 'all';
+        let denom = total;
+        if (denominator === 'scored') {
+          denom = officialRows.filter(r => r._solved > 0).length;
+        }
+        ratioValues = options.ratio.value.map(r => {
+          const v = r * denom;
+          if (rounding === 'floor') return Math.floor(v);
+          if (rounding === 'ceil') return Math.ceil(v);
+          return Math.round(v);
+        });
+      }
+
+      // If both count and ratio, take min for each segment
+      if (countValues && ratioValues) {
+        const len = Math.max(countValues.length, ratioValues.length);
+        const result = [];
+        for (let i = 0; i < len; i++) {
+          const c = countValues[i] || 0;
+          const r = ratioValues[i] || 0;
+          result.push(Math.min(c, r));
+        }
+        return result;
+      }
+
+      if (countValues) return countValues.slice();
+      if (ratioValues) return ratioValues;
+
+      return [];
+    }
+
+    function computeMedals() {
+      const segCounts = getSegmentCounts();
+      if (!segCounts.length) {
+        for (const row of rows.value) row._medalClass = '';
+        return;
+      }
+
+      let offRank = 0;
+      for (const row of rows.value) {
+        if (row.user?.official === true) {
+          offRank++;
+          let cumEnd = 0;
+          row._medalClass = '';
+          for (let i = 0; i < segCounts.length; i++) {
+            cumEnd += segCounts[i];
+            if (offRank <= cumEnd) {
+              row._medalClass = segmentStyleToClass(awardSeriesInfo.value.segments[i]?.style);
+              break;
+            }
+          }
+        } else {
+          row._medalClass = '';
+        }
+      }
+
+      // Unofficial: inherit medal from best official team ranked below
+      for (let i = 0; i < rows.value.length; i++) {
+        const row = rows.value[i];
+        if (row.user?.official === true) continue;
+        for (let j = i + 1; j < rows.value.length; j++) {
+          if (rows.value[j].user?.official === true && rows.value[j]._medalClass) {
+            row._medalClass = rows.value[j]._medalClass;
+            break;
+          }
+        }
+      }
+    }
+
+    function getOfficialRank(row) {
+      let rank = 0;
+      for (const r of rows.value) {
+        if (r.user?.official === true) {
+          rank++;
+          if (r === row) return rank;
+        }
+      }
+      return 0;
+    }
+
+    function showTeamInfo(e, row) {
+      solPopup.value = null;
+      popupRow.value = row;
+      const rect = e.target.getBoundingClientRect();
+      const left = Math.min(rect.left, window.innerWidth - 220);
+      // Position: fixed uses viewport coords, no scrollY needed
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const estimatedHeight = 100;
+      let top;
+      if (spaceBelow < estimatedHeight) {
+        top = Math.max(4, rect.top - estimatedHeight - 4);
+      } else {
+        top = rect.bottom + 4;
+      }
+      popupPos.value = {
+        left: left + 'px',
+        top: top + 'px'
+      };
+    }
+
+    function showSolPopup(e, row, pi) {
+      popupRow.value = null;
+      const st = row.statuses[pi];
+      if (!st || !st.solutions || st.solutions.length === 0) return;
+
+      const elapsed = getElapsed();
+      const frozenStart = contestDurationSec.value - frozenDurationSec.value;
+      const isActiveVP = isVPMode.value && !contestEnded.value;
+      const isFrozen = isActiveVP && frozenMode.value && elapsed >= frozenStart && elapsed < contestDurationSec.value;
+
+      const filtered = st.solutions.filter(s => timeToSeconds(s.time) <= elapsed);
+      if (filtered.length === 0) return;
+
+      const solutions = filtered.map(s => {
+        const timeSec = timeToSeconds(s.time);
+        const inFrozenZone = isFrozen && timeSec >= frozenStart;
+        let displayResult = s.result;
+        if (inFrozenZone) displayResult = 'Frozen';
+        else if (s.result === 'FB') displayResult = 'First';
+        return { result: s.result, displayResult, timeSec, inFrozenZone };
+      });
+
+      solPopup.value = {
+        alias: problems.value[pi]?.alias || String.fromCharCode(65 + pi),
+        teamName: row.user.name,
+        solutions
+      };
+
+      const rect = e.target.getBoundingClientRect();
+      const left = Math.min(rect.left, window.innerWidth - 260);
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const estimatedHeight = 40 + solutions.length * 24;
+      let top;
+      if (spaceBelow < estimatedHeight) {
+        top = Math.max(4, rect.top - estimatedHeight - 4);
+      } else {
+        top = rect.bottom + 4;
+      }
+      solPopupPos.value = { left: left + 'px', top: top + 'px' };
+    }
+
+    function solResultClass(s) {
+      if (s.inFrozenZone) return 'sol-frozen';
+      if (s.result === 'AC' || s.result === 'FB') return 'sol-ac';
+      return 'sol-wa';
+    }
+
+    return {
+      loadError, dataLoaded, officialOnly, frozenMode, contestTitle, problems, problemStats, filteredRows,
+      isVPMode, timerDisplay, contestDuration, contestDurationSec, refresh, probClass, formatTime, getMedalClass,
+      popupRow, popupPos, showTeamInfo, contestEnded, reviewElapsed, onSliderChange, sliderTimeLabel,
+      solPopup, solPopupPos, showSolPopup, solResultClass
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
