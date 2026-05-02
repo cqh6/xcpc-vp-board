@@ -144,7 +144,7 @@ td.team { cursor: pointer; }
       </thead>
       <tbody>
         <tr v-for="(row, idx) in filteredRows" :key="row.user.id">
-          <td :class="['rank', getMedalClass(row)]">{{ row._displayRank }}</td>
+          <td :class="['rank', row._medalClass]">{{ row._displayRank }}</td>
           <td class="rank-sharp">{{ row._displayOrgRank }}</td>
           <td class="org-col">{{ row.user.organization || '' }}</td>
           <td class="team" @click="showTeamInfo($event, row)"><template v-if="row.user.official === false">★</template>{{ row.user.name }}</td>
@@ -530,35 +530,6 @@ createApp({
       return h + ':' + String(m).padStart(2, '0');
     }
 
-    function getMedalClass(row) {
-      if (!awardSeriesInfo.value) return '';
-      const segCounts = getSegmentCounts();
-      if (!segCounts.length) return '';
-
-      if (row.user?.official === true) {
-        const offRank = getOfficialRank(row);
-        let cumEnd = 0;
-        for (let i = 0; i < segCounts.length; i++) {
-          cumEnd += segCounts[i];
-          if (offRank <= cumEnd) return segmentStyleToClass(awardSeriesInfo.value.segments[i]?.style);
-        }
-        return '';
-      } else {
-        const idx = rows.value.indexOf(row);
-        for (let j = idx + 1; j < rows.value.length; j++) {
-          if (rows.value[j].user?.official === true) {
-            const offRank = getOfficialRank(rows.value[j]);
-            let cumEnd = 0;
-            for (let i = 0; i < segCounts.length; i++) {
-              cumEnd += segCounts[i];
-              if (offRank <= cumEnd) return segmentStyleToClass(awardSeriesInfo.value.segments[i]?.style);
-            }
-          }
-        }
-        return '';
-      }
-    }
-
     function segmentStyleToClass(style) {
       if (style === 'gold') return 'rank-gold';
       if (style === 'silver') return 'rank-silver';
@@ -629,10 +600,12 @@ createApp({
         return;
       }
 
-      let offRank = 0;
+      let offRank = 0, prevOff = null;
       for (const row of rows.value) {
         if (row.user?.official === true) {
-          offRank++;
+          if (!prevOff || row._solved !== prevOff._solved || row._penalty !== prevOff._penalty) {
+            offRank = getOfficialRank(row);
+          }
           let cumEnd = 0;
           row._medalClass = '';
           for (let i = 0; i < segCounts.length; i++) {
@@ -642,6 +615,7 @@ createApp({
               break;
             }
           }
+          prevOff = row;
         } else {
           row._medalClass = '';
         }
@@ -661,11 +635,16 @@ createApp({
     }
 
     function getOfficialRank(row) {
-      let rank = 0;
+      let rank = 0, prev = null;
+      let count = 0;
       for (const r of rows.value) {
         if (r.user?.official === true) {
-          rank++;
+          count++;
+          if (!prev || r._solved !== prev._solved || r._penalty !== prev._penalty) {
+            rank = count;
+          }
           if (r === row) return rank;
+          prev = r;
         }
       }
       return 0;
@@ -740,7 +719,7 @@ createApp({
 
     return {
       loadError, dataLoaded, officialOnly, frozenMode, contestTitle, problems, problemStats, filteredRows,
-      isVPMode, timerDisplay, contestDuration, contestDurationSec, refresh, probClass, formatTime, getMedalClass,
+      isVPMode, timerDisplay, contestDuration, contestDurationSec, refresh, probClass, formatTime,
       popupRow, popupPos, showTeamInfo, contestEnded, reviewElapsed, onSliderChange, sliderTimeLabel,
       solPopup, solPopupPos, showSolPopup, solResultClass
     };
