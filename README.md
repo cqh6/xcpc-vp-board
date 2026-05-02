@@ -24,6 +24,6 @@
 
 ## 技术栈
 
-- Vue 3（Composition API）
+- Vue 3
 - js-yaml
 - HTML / CSS / JavaScript
